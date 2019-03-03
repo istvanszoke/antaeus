@@ -28,25 +28,30 @@ class BillingServiceTest {
 
     private val invoiceService = mockk<InvoiceService> {
         every { fetchAll() } returns invoiceList
-        every { update(any())} returns Unit
+        every { update(any()) } returns Unit
     }
 
     private val paymentProvider = mockk<PaymentProvider> {
         every { charge(invoiceToBePaid1) } returns true
         every { charge(invoiceToBePaid2) } returns true
-        every { charge(invoiceToFail)} returns false
+        every { charge(invoiceToFail) } returns false
+    }
+
+    private val paymentProviderForFails = mockk<PaymentProvider> {
+        every { charge(invoiceToFail) } returns true
     }
 
     private val billingService = BillingService(
             paymentProvider,
-            invoiceService,
-            Calendar.SECOND,
-            1,
-            false)
+            invoiceService)
+
+    private val billingServiceForFails = BillingService(
+            paymentProviderForFails,
+            invoiceService)
 
     @Test
-    fun `will call invoiceService multiple times`(){
-        billingService.schedulePeriodicBilling()
+    fun `will call invoiceService multiple times`() {
+        billingService.scheduleInfinitePeriodicBilling(Calendar.SECOND, 1, false)
 
         Thread.sleep(3000)
 
@@ -54,8 +59,8 @@ class BillingServiceTest {
     }
 
     @Test
-    fun `will update db after payment`(){
-        billingService.schedulePeriodicBilling()
+    fun `will update db after payment`() {
+        billingService.scheduleInfinitePeriodicBilling(Calendar.SECOND, 1, false)
 
         Thread.sleep(1000)
 
@@ -64,18 +69,18 @@ class BillingServiceTest {
         val invoice1 = invoiceToBePaid1.copy(status = InvoiceStatus.PAID)
         val invoice2 = invoiceToBePaid2.copy(status = InvoiceStatus.PAID)
         val invoice3 = invoiceToFail.copy(status = InvoiceStatus.FAILED)
-        verify(exactly = 1) { invoiceService.update(invoice1)}
-        verify(exactly = 1) { invoiceService.update(invoice2)}
-        verify(exactly = 1) { invoiceService.update(invoice3)}
+        verify(exactly = 1) { invoiceService.update(invoice1) }
+        verify(exactly = 1) { invoiceService.update(invoice2) }
+        verify(exactly = 1) { invoiceService.update(invoice3) }
     }
 
     @Test
-    fun `will schedule new billing for failed payments`(){
+    fun `will schedule new billing for failed payments`() {
 
     }
 
     @Test
-    fun `will alert external service for MANUAL_CHECK invoices`(){
+    fun `will alert external service for MANUAL_CHECK invoices`() {
 
     }
 
