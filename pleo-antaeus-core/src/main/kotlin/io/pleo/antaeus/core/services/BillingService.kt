@@ -1,6 +1,7 @@
 package io.pleo.antaeus.core.services
 
 import io.pleo.antaeus.core.external.PaymentProvider
+import io.pleo.antaeus.models.InvoiceStatus
 import java.util.*
 import kotlin.concurrent.schedule
 
@@ -29,13 +30,26 @@ class BillingService (
    }
 
     private fun makePaymentAndScheduleNewOne() {
-        println("Making payment")
-        val invoices = invoiceService.fetchAll()
-        if (invoices != null) {
-            for (invoice in invoices){
-                paymentProvider.charge(invoice)
-            }
-        }
+        makePaymentForPending()
         schedulePeriodicBilling()
+    }
+
+    private fun makePaymentForPending() {
+        //TODO debug log here
+        println("make payment")
+        val invoices = invoiceService.fetchAll()
+        for (invoice in invoices){
+            if (invoice.status == InvoiceStatus.PENDING){
+                val result = paymentProvider.charge(invoice)
+                if (result) {
+                    val paidInvoice = invoice.copy(status = InvoiceStatus.PAID)
+                    invoiceService.update(paidInvoice)
+                } else {
+                    val failedInvoice = invoice.copy(status = InvoiceStatus.FAILED)
+                    invoiceService.update(failedInvoice)
+                }
+            }
+
+        }
     }
 }

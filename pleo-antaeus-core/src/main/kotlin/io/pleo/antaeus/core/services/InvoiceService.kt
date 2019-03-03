@@ -9,11 +9,15 @@ import io.pleo.antaeus.data.AntaeusDal
 import io.pleo.antaeus.models.Invoice
 
 class InvoiceService(private val dal: AntaeusDal) {
-    fun fetchAll(): List<Invoice>? {
+    fun fetchAll(): List<Invoice> {
        return dal.fetchInvoices()
     }
 
     fun fetch(id: Int): Invoice {
         return dal.fetchInvoice(id) ?: throw InvoiceNotFoundException(id)
+    }
+
+    fun update(invoice: Invoice) {
+        dal.updateInvoice(invoice.id, invoice.amount, invoice.customerId, invoice.status)
     }
 }
