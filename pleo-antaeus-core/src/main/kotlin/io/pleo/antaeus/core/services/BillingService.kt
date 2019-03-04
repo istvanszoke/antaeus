@@ -48,7 +48,7 @@ class BillingService(
     private fun makePaymentForFailed() {
         val invoices = invoiceService.fetchAll()
         for (invoice in invoices) {
-            if (invoice.status == InvoiceStatus.FAILED) {
+            if (invoice.status == InvoiceStatus.FAILED1) {
                 val result = paymentProvider.charge(invoice)
                 handleChargeResult(invoice, result)
             }
@@ -61,7 +61,7 @@ class BillingService(
             val paidInvoice = invoice.copy(status = InvoiceStatus.PAID)
             invoiceService.update(paidInvoice)
         } else {
-            val failedInvoice = invoice.copy(status = InvoiceStatus.FAILED)
+            val failedInvoice = invoice.copy(status = InvoiceStatus.FAILED1)
             invoiceService.update(failedInvoice)
         }
     }
