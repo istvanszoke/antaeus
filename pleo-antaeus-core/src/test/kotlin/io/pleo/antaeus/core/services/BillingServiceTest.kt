@@ -138,7 +138,7 @@ class BillingServiceTest {
 
     @Test
     fun `will call invoiceService multiple times`() {
-        billingService.scheduleNext()
+        billingService.startService()
 
         Thread.sleep(10000)
 
@@ -150,7 +150,7 @@ class BillingServiceTest {
 
     @Test
     fun `will update db after payment`() {
-        billingService.scheduleNext()
+        billingService.startService()
 
         Thread.sleep(5000)
 
@@ -164,7 +164,7 @@ class BillingServiceTest {
 
     @Test
     fun `will schedule new billing 3 times for failed payments and then falling back to manual_check`() {
-        billingService.scheduleNext()
+        billingService.startService()
 
         Thread.sleep(10000)
 
@@ -176,20 +176,15 @@ class BillingServiceTest {
 
     @Test
     fun `will handle invoice status when payment provider throws exception`() {
-        billingServiceForErrors.scheduleNext()
+        billingServiceForErrors.startService()
 
         Thread.sleep(5000)
 
         verify(exactly = 1) { invoiceServiceForErrors.update(invoiceToFail1Failed1) }
         verify(exactly = 1) { invoiceServiceForErrors.update(invoiceToFail2Manual) }
         verify(exactly = 1) { invoiceServiceForErrors.update(invoiceToFail3Manual) }
-
     }
 
-    @Test
-    fun `will alert external service for MANUAL_CHECK invoices`() {
-
-    }
-
-//TODO add error cases
+    //TODO add error cases
+    //TODO more exhaustive testing
 }

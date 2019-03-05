@@ -23,6 +23,7 @@ import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
 import setupInitialData
 import java.sql.Connection
+import java.util.*
 
 fun main() {
     // The tables to create in the database.
@@ -56,13 +57,21 @@ fun main() {
     val customerService = CustomerService(dal = dal)
 
     // This is _your_ billing service to be included where you see fit
-    //val billingService = BillingService(paymentProvider = paymentProvider, invoiceService = invoiceService)
-
+    val billingService = BillingService(
+            paymentProvider,
+            invoiceService,
+            Calendar.MONTH,
+            1,
+            Calendar.DAY_OF_MONTH,
+            1,
+            true)
 
     // Create REST web service
     AntaeusRest(
         invoiceService = invoiceService,
         customerService = customerService
     ).run()
+
+    billingService.startService()
 }
 

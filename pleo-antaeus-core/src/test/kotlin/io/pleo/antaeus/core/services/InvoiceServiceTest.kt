@@ -53,6 +53,4 @@ class InvoiceServiceTest {
 
         Assertions.assertEquals(invoiceList, actual)
     }
-
-    //TODO test added features
 }

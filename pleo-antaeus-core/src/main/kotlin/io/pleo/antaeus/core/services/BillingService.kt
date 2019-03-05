@@ -13,58 +13,71 @@ import kotlin.concurrent.schedule
 
 private val logger = KotlinLogging.logger {}
 
+/**
+ * This service takes care of billing the customers each month
+ * @param paymentProvider - a service that handles the actual payments of invoices
+ * @param invoiceService - a service that fetched the invoices
+ * @param pendingPeriodUnit - the unit of the amount of time between two PENDING billing cycles
+ * @param pendingPeriodAmount - the amount of time between two PENDING billing cycles
+ * @param failedPeriodUnit - the unit of the amount of time between two FAILED (RETRY) billing cycles
+ * @param failedPeriodAmount - the amount of time between two FAILED (RETRY) billing cycles
+ * @param firstOfMonth - a boolean which indicates that a PENDING billing cycle always starts at the first day of the month
+ */
 class BillingService(
         private val paymentProvider: PaymentProvider,
         private val invoiceService: InvoiceService,
-        private val periodUnit: Int,
-        private val periodAmount: Int,
+        private val pendingPeriodUnit: Int,
+        private val pendingPeriodAmount: Int,
         private val failedPeriodUnit: Int,
         private val failedPeriodAmount: Int,
         private val firstOfMonth: Boolean
 ) {
-    val PENDING_STATE = 0
-    val FAILED1_STATE = 1
-    val FAILED2_STATE = 2
-    val FAILED3_STATE = 3
-
     private val timer: Timer = Timer("billingScheduler", true)
 
-    private var currentState = PENDING_STATE
+    private var currentState = BillingState.PENDING
 
-    fun scheduleNext() {
+    fun startService() {
+        scheduleNext()
+    }
+
+    private fun scheduleNext() {
         val time = GregorianCalendar.getInstance()
         when (currentState) {
-            PENDING_STATE -> {
+            BillingState.PENDING -> {
                 val scheduledTime = getNextPendingDate(time.time)
                 timer.schedule(scheduledTime) {
                     makePayment(InvoiceStatus.PENDING)
                     scheduleNext()
                 }
-                currentState = FAILED1_STATE
+                currentState = BillingState.FAILED1
+                logger.info("New billing job has been scheduled for: $scheduledTime")
             }
-            FAILED1_STATE -> {
+            BillingState.FAILED1 -> {
                 val scheduledTime = getNextFailedDate(time.time)
                 timer.schedule(scheduledTime) {
                     makePayment(InvoiceStatus.FAILED1)
                     scheduleNext()
                 }
-                currentState = FAILED2_STATE
+                currentState = BillingState.FAILED2
+                logger.info("New billing job has been scheduled for: $scheduledTime")
             }
-            FAILED2_STATE -> {
+            BillingState.FAILED2 -> {
                 val scheduledTime = getNextFailedDate(time.time)
                 timer.schedule(scheduledTime) {
                     makePayment(InvoiceStatus.FAILED2)
                     scheduleNext()
                 }
-                currentState = FAILED3_STATE
+                currentState = BillingState.FAILED3
+                logger.info("New billing job has been scheduled for: $scheduledTime")
             }
-            FAILED3_STATE -> {
+            BillingState.FAILED3 -> {
                 val scheduledTime = getNextFailedDate(time.time)
                 timer.schedule(scheduledTime) {
                     makePayment(InvoiceStatus.FAILED3)
                     scheduleNext()
                 }
-                currentState = PENDING_STATE
+                currentState = BillingState.PENDING
+                logger.info("New billing job has been scheduled for: $scheduledTime")
             }
         }
 
@@ -78,7 +91,7 @@ class BillingService(
             scheduledTime.set(Calendar.HOUR_OF_DAY, 8)
             scheduledTime.set(Calendar.MINUTE, 0)
         }
-        scheduledTime.add(periodUnit, periodAmount)
+        scheduledTime.add(pendingPeriodUnit, pendingPeriodAmount)
         return scheduledTime.time
     }
 
@@ -136,6 +149,4 @@ class BillingService(
         }
         return invoiceToReturn
     }
-
-    //TODO logging
 }
