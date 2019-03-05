@@ -20,4 +20,6 @@ class InvoiceServiceTest {
             invoiceService.fetch(404)
         }
     }
+
+    //TODO test added features
 }

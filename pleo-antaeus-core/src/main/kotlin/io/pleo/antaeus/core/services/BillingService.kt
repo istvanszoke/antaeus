@@ -9,60 +9,107 @@ import kotlin.concurrent.schedule
 
 class BillingService(
         private val paymentProvider: PaymentProvider,
-        private val invoiceService: InvoiceService
+        private val invoiceService: InvoiceService,
+        private val periodUnit: Int,
+        private val periodAmount: Int,
+        private val failedPeriodUnit: Int,
+        private val failedPeriodAmount: Int,
+        private val firstOfMonth: Boolean
 ) {
+    val PENDING_STATE = 0
+    val FAILED1_STATE = 1
+    val FAILED2_STATE = 2
+    val FAILED3_STATE = 3
 
-    private val timer: Timer = Timer("schedule", true)
+    private val timer: Timer = Timer("billingScheduler", true)
 
-    fun scheduleInfinitePeriodicBilling(periodUnit: Int, periodAmount: Int, firstOfMonth: Boolean) {
-        val scheduledTime = GregorianCalendar.getInstance()
+    private var currentState = PENDING_STATE
+
+    fun scheduleNext() {
+        val time = GregorianCalendar.getInstance()
+        when (currentState) {
+            PENDING_STATE -> {
+                val scheduledTime = getNextPendingDate(time.time)
+                timer.schedule(scheduledTime) {
+                    makePayment(InvoiceStatus.PENDING)
+                    scheduleNext()
+                }
+                currentState = FAILED1_STATE
+            }
+            FAILED1_STATE -> {
+                val scheduledTime = getNextFailedDate(time.time)
+                timer.schedule(scheduledTime) {
+                    makePayment(InvoiceStatus.FAILED1)
+                    scheduleNext()
+                }
+                currentState = FAILED2_STATE
+            }
+            FAILED2_STATE -> {
+                val scheduledTime = getNextFailedDate(time.time)
+                timer.schedule(scheduledTime) {
+                    makePayment(InvoiceStatus.FAILED2)
+                    scheduleNext()
+                }
+                currentState = FAILED3_STATE
+            }
+            FAILED3_STATE -> {
+                val scheduledTime = getNextFailedDate(time.time)
+                timer.schedule(scheduledTime) {
+                    makePayment(InvoiceStatus.FAILED3)
+                    scheduleNext()
+                }
+                currentState = PENDING_STATE
+            }
+        }
+
+    }
+
+    private fun getNextPendingDate(date: Date) : Date {
+        val scheduledTime = GregorianCalendar()
+        scheduledTime.time = date
         if (firstOfMonth) {
             scheduledTime.set(Calendar.DAY_OF_MONTH, 1)
             scheduledTime.set(Calendar.HOUR_OF_DAY, 8)
             scheduledTime.set(Calendar.MINUTE, 0)
         }
         scheduledTime.add(periodUnit, periodAmount)
-        timer.schedule(scheduledTime.time) {
-            makePaymentForPending()
-            scheduleInfinitePeriodicBilling(periodUnit,periodAmount,firstOfMonth)
-        }
+        return scheduledTime.time
     }
 
-    fun scheduleSimplePeriodicBilling() {
-
+    private fun getNextFailedDate(date: Date) : Date {
+        val scheduledTime = GregorianCalendar()
+        scheduledTime.time = date
+        scheduledTime.add(failedPeriodUnit, failedPeriodAmount)
+        return scheduledTime.time
     }
 
-    private fun makePaymentForPending() {
-        //TODO debug log here
-        println("make payment")
-        val invoices = invoiceService.fetchAll()
+    private fun makePayment(status: InvoiceStatus) {
+        val invoices = invoiceService.fetchOfStatus(status)
         for (invoice in invoices) {
-            if (invoice.status == InvoiceStatus.PENDING) {
+            if (invoice.status == status) {
                 val result = paymentProvider.charge(invoice)
                 handleChargeResult(invoice, result)
             }
-
-        }
-    }
-
-    private fun makePaymentForFailed() {
-        val invoices = invoiceService.fetchAll()
-        for (invoice in invoices) {
-            if (invoice.status == InvoiceStatus.FAILED1) {
-                val result = paymentProvider.charge(invoice)
-                handleChargeResult(invoice, result)
-            }
-
         }
     }
 
     private fun handleChargeResult(invoice: Invoice, result: Boolean) {
+        var invoiceToSave = invoice.copy()
         if (result) {
-            val paidInvoice = invoice.copy(status = InvoiceStatus.PAID)
-            invoiceService.update(paidInvoice)
+            invoiceToSave = invoice.copy(status = InvoiceStatus.PAID)
         } else {
-            val failedInvoice = invoice.copy(status = InvoiceStatus.FAILED1)
-            invoiceService.update(failedInvoice)
+            when (invoice.status) {
+                InvoiceStatus.PENDING -> invoiceToSave = invoice.copy(status = InvoiceStatus.FAILED1)
+                InvoiceStatus.FAILED1 -> invoiceToSave = invoice.copy(status = InvoiceStatus.FAILED2)
+                InvoiceStatus.FAILED2 -> invoiceToSave = invoice.copy(status = InvoiceStatus.FAILED3)
+                InvoiceStatus.FAILED3 -> invoiceToSave = invoice.copy(status = InvoiceStatus.MANUAL_CHECK)
+                else -> {
+                    //TODO illegal state
+                }
+            }
         }
+        invoiceService.update(invoiceToSave)
     }
+
+    //TODO logging
 }
