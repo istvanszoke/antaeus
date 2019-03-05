@@ -1,11 +1,17 @@
 package io.pleo.antaeus.core.services
 
+import io.pleo.antaeus.core.exceptions.CurrencyMismatchException
+import io.pleo.antaeus.core.exceptions.CustomerNotFoundException
+import io.pleo.antaeus.core.exceptions.NetworkException
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.models.Invoice
 import io.pleo.antaeus.models.InvoiceStatus
+import mu.KotlinLogging
+import java.lang.Exception
 import java.util.*
 import kotlin.concurrent.schedule
 
+private val logger = KotlinLogging.logger {}
 
 class BillingService(
         private val paymentProvider: PaymentProvider,
@@ -64,7 +70,7 @@ class BillingService(
 
     }
 
-    private fun getNextPendingDate(date: Date) : Date {
+    private fun getNextPendingDate(date: Date): Date {
         val scheduledTime = GregorianCalendar()
         scheduledTime.time = date
         if (firstOfMonth) {
@@ -76,7 +82,7 @@ class BillingService(
         return scheduledTime.time
     }
 
-    private fun getNextFailedDate(date: Date) : Date {
+    private fun getNextFailedDate(date: Date): Date {
         val scheduledTime = GregorianCalendar()
         scheduledTime.time = date
         scheduledTime.add(failedPeriodUnit, failedPeriodAmount)
@@ -86,30 +92,49 @@ class BillingService(
     private fun makePayment(status: InvoiceStatus) {
         val invoices = invoiceService.fetchOfStatus(status)
         for (invoice in invoices) {
-            if (invoice.status == status) {
-                val result = paymentProvider.charge(invoice)
-                handleChargeResult(invoice, result)
+            var result = false
+            var paymentException: Exception? = null
+            try {
+                result = paymentProvider.charge(invoice)
+            } catch (e: Exception) {
+                logger.debug("Failed to charge client due to Exception", e)
+                paymentException = e
+            } finally {
+                handleChargeResult(invoice, result, paymentException)
             }
         }
-        //TODO handle errors
     }
 
-    private fun handleChargeResult(invoice: Invoice, result: Boolean) {
+    private fun handleChargeResult(invoice: Invoice, result: Boolean, exception: Exception?) {
         var invoiceToSave = invoice.copy()
-        if (result) {
+
+        if (result && exception == null) {
             invoiceToSave = invoice.copy(status = InvoiceStatus.PAID)
+        } else if (exception != null) {
+            when (exception) {
+                is CurrencyMismatchException -> invoiceToSave = invoice.copy(status = InvoiceStatus.MANUAL_CHECK)
+                is CustomerNotFoundException -> invoiceToSave = invoice.copy(status = InvoiceStatus.MANUAL_CHECK)
+                is NetworkException -> invoiceToSave = handleFalsePaymentProviderResponse(invoice)
+            }
         } else {
-            when (invoice.status) {
-                InvoiceStatus.PENDING -> invoiceToSave = invoice.copy(status = InvoiceStatus.FAILED1)
-                InvoiceStatus.FAILED1 -> invoiceToSave = invoice.copy(status = InvoiceStatus.FAILED2)
-                InvoiceStatus.FAILED2 -> invoiceToSave = invoice.copy(status = InvoiceStatus.FAILED3)
-                InvoiceStatus.FAILED3 -> invoiceToSave = invoice.copy(status = InvoiceStatus.MANUAL_CHECK)
-                else -> {
-                    //TODO illegal state
-                }
+            invoiceToSave = handleFalsePaymentProviderResponse(invoice)
+        }
+
+        invoiceService.update(invoiceToSave)
+    }
+
+    private fun handleFalsePaymentProviderResponse(invoice: Invoice): Invoice {
+        var invoiceToReturn = invoice.copy()
+        when (invoice.status) {
+            InvoiceStatus.PENDING -> invoiceToReturn = invoice.copy(status = InvoiceStatus.FAILED1)
+            InvoiceStatus.FAILED1 -> invoiceToReturn = invoice.copy(status = InvoiceStatus.FAILED2)
+            InvoiceStatus.FAILED2 -> invoiceToReturn = invoice.copy(status = InvoiceStatus.FAILED3)
+            InvoiceStatus.FAILED3 -> invoiceToReturn = invoice.copy(status = InvoiceStatus.MANUAL_CHECK)
+            else -> {
+                logger.warn("Illegal state of invoice")
             }
         }
-        invoiceService.update(invoiceToSave)
+        return invoiceToReturn
     }
 
     //TODO logging
