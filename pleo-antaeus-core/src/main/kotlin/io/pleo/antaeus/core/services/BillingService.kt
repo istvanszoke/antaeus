@@ -91,6 +91,7 @@ class BillingService(
                 handleChargeResult(invoice, result)
             }
         }
+        //TODO handle errors
     }
 
     private fun handleChargeResult(invoice: Invoice, result: Boolean) {

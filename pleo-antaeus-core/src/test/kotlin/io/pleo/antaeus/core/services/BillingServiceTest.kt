@@ -129,6 +129,8 @@ class BillingServiceTest {
         verify(exactly = 1) { invoiceService.update(invoiceToFail1Manual) }
     }
 
+
+
     @Test
     fun `will alert external service for MANUAL_CHECK invoices`() {
 
